@@ -1,9 +1,12 @@
+use std::collections::HashMap;
+
 use anyhow::Context;
 use bevy::{
     app::{App, Startup},
-    ecs::system::{ResMut, Resource},
+    ecs::system::{Commands, ResMut, Resource},
     DefaultPlugins, MinimalPlugins,
 };
+use startup_mod::jeffparsons::mvp_game::mvp_api::{self, Host, HostCommands};
 use wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView};
 
 mod startup_mod {
@@ -13,6 +16,31 @@ mod startup_mod {
 struct StartupModState {
     wasi_ctx: WasiCtx,
     table: Table,
+    commands_table: HashMap<u32, ImplCommands>,
+}
+
+struct ImplCommands {}
+
+impl Host for StartupModState {}
+
+impl HostCommands for StartupModState {
+    fn spawn_stuff(
+        &mut self,
+        _self_: wasmtime::component::Resource<mvp_api::Commands>,
+    ) -> wasmtime::Result<()> {
+        println!("TODO: Actually spawn stuff");
+
+        Ok(())
+    }
+
+    fn drop(
+        &mut self,
+        rep: wasmtime::component::Resource<mvp_api::Commands>,
+    ) -> wasmtime::Result<()> {
+        self.commands_table.remove(&rep.rep());
+
+        Ok(())
+    }
 }
 
 impl WasiView for StartupModState {
@@ -41,16 +69,21 @@ fn main() -> anyhow::Result<()> {
         &engine,
         "wasm-components/target/wasm32-wasi/debug/test_startup_mod.wasm",
     )?;
-    let mut linker = wasmtime::component::Linker::new(&engine);
+    let mut linker: wasmtime::component::Linker<StartupModState> =
+        wasmtime::component::Linker::new(&engine);
 
     wasmtime_wasi::preview2::command::sync::add_to_linker(&mut linker)
         .context("Failed to set up WASI in component linker")?;
+
+    startup_mod::StartupMod::add_to_linker(&mut linker, |state| state)
+        .context("Failed to set up startup mod world in component linker")?;
 
     let mut store = wasmtime::Store::new(
         &engine,
         StartupModState {
             wasi_ctx: WasiCtxBuilder::new().build(),
             table: Table::new(),
+            commands_table: HashMap::new(),
         },
     );
     let (bindings, _) = startup_mod::StartupMod::instantiate(&mut store, &component, &linker)?;
@@ -79,12 +112,21 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn startup_mods_system(mut mods: ResMut<StartupMods>) {
+fn startup_mods_system(mut _commands: Commands, mut mods: ResMut<StartupMods>) {
     for startup_mod in &mut mods.startup_mods {
+        // TODO: Don't create a new one each time.
+        // In fact, we can probably just reuse _one_ for all calls,
+        // and so we don't even really need to store it in a "table".
+        let commands_table = &mut startup_mod.store.data_mut().commands_table;
+        let handle = wasmtime::component::Resource::<mvp_api::Commands>::new_own(
+            commands_table.len() as u32,
+        );
+        commands_table.insert(handle.rep(), ImplCommands {});
+
         let Ok(message) = startup_mod
             .bindings
             .jeffparsons_mvp_game_startup_mod_api()
-            .call_run(&mut startup_mod.store)
+            .call_run(&mut startup_mod.store, handle)
         else {
             eprintln!("ERROR calling startup mod");
             continue;

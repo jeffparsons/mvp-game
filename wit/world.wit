@@ -2,8 +2,17 @@ package jeffparsons:mvp-game;
 
 world startup-mod {
     export startup-mod-api;
+    import mvp-api;
 }
 
 interface startup-mod-api {
-    run: func() -> string;
+    use mvp-api.{commands};
+
+    run: func(commands: borrow<commands>) -> string;
+}
+
+interface mvp-api {
+    resource commands {
+        spawn-stuff: func();
+    }
 }
