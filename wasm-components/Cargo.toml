@@ -1,0 +1,8 @@
+[workspace]
+members = ["test-startup-mod"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+authors = ["Jeff Parsons <jeff@parsons.io>"]
+repository = "https://github.com/jeffparsons/mvp-game"

@@ -1,0 +1,9 @@
+package jeffparsons:mvp-game;
+
+world startup-mod {
+    export startup-mod-api;
+}
+
+interface startup-mod-api {
+    run: func() -> string;
+}

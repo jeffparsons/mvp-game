@@ -1,0 +1,18 @@
+[package]
+name = "test-startup-mod"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+cargo-component-bindings = "0.6"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component.target]
+path = "../../wit/world.wit"
+world = "jeffparsons:mvp-game/startup-mod"
+
+[package.metadata.component.target.dependencies]

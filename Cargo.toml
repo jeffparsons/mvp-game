@@ -2,10 +2,13 @@
 name = "mvp"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/jeffparsons/mvp-game"
 
 [dependencies]
-bevy = "0.12.1"
-wasmtime = { version = "16.0.0", features = ["component-model"] }
+anyhow = { version = "1", features = ["backtrace"] }
+bevy = "0.12"
+wasmtime = { version = "16", features = ["component-model"] }
+wasmtime-wasi = { version = "16", features = [] }
 
 [profile.dev]
 # Enable a small amount of optimization in debug mode.
