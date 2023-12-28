@@ -1,3 +1,6 @@
+use bevy::prelude::*;
+
 fn main() {
-    println!("Hello, world!");
+    println!("Hello, Bevy!");
+    App::new().run();
 }

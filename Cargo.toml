@@ -4,3 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bevy = "0.12.1"
+wasmtime = { version = "16.0.0", features = ["component-model"] }
+
+[profile.dev]
+# Enable a small amount of optimization in debug mode.
+opt-level = 1
+
+[profile.dev.package."*"]
+# Enable high optimizations for dependencies (incl. Bevy), but not for our code.
+opt-level = 3
