@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+mod smugglers_mutex;
+
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Context;
 use bevy::{
@@ -6,6 +8,7 @@ use bevy::{
     ecs::system::{Commands, ResMut, Resource},
     DefaultPlugins, MinimalPlugins,
 };
+use smugglers_mutex::SmugglersMutex;
 use startup_mod::jeffparsons::mvp_game::mvp_api::{self, Host, HostCommands};
 use wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView};
 
@@ -17,6 +20,7 @@ struct StartupModState {
     wasi_ctx: WasiCtx,
     table: Table,
     commands_table: HashMap<u32, ImplCommands>,
+    smuggler: Arc<SmugglersMutex>,
 }
 
 struct ImplCommands {}
@@ -28,7 +32,14 @@ impl HostCommands for StartupModState {
         &mut self,
         _self_: wasmtime::component::Resource<mvp_api::Commands>,
     ) -> wasmtime::Result<()> {
-        println!("TODO: Actually spawn stuff");
+        let mut commands = self.smuggler.lock();
+        let commands = commands.as_mut().unwrap();
+
+        println!("I'm going to spawn stuff...!");
+        // println!("(Another print to force a rebuild)");
+
+        // TODO: Actually spawn a bunch of stuff.
+        commands.spawn_empty();
 
         Ok(())
     }
@@ -78,12 +89,15 @@ fn main() -> anyhow::Result<()> {
     startup_mod::StartupMod::add_to_linker(&mut linker, |state| state)
         .context("Failed to set up startup mod world in component linker")?;
 
+    let smuggler = Arc::new(SmugglersMutex::new());
+
     let mut store = wasmtime::Store::new(
         &engine,
         StartupModState {
             wasi_ctx: WasiCtxBuilder::new().build(),
             table: Table::new(),
             commands_table: HashMap::new(),
+            smuggler: smuggler.clone(),
         },
     );
     let (bindings, _) = startup_mod::StartupMod::instantiate(&mut store, &component, &linker)?;
@@ -92,6 +106,7 @@ fn main() -> anyhow::Result<()> {
 
     app.insert_resource(StartupMods {
         startup_mods: vec![StartupMod { bindings, store }],
+        smuggler,
     });
 
     // TODO: Not sure if I want to support an env var for this.
@@ -112,33 +127,38 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn startup_mods_system(mut _commands: Commands, mut mods: ResMut<StartupMods>) {
-    for startup_mod in &mut mods.startup_mods {
-        // TODO: Don't create a new one each time.
-        // In fact, we can probably just reuse _one_ for all calls,
-        // and so we don't even really need to store it in a "table".
-        let commands_table = &mut startup_mod.store.data_mut().commands_table;
-        let handle = wasmtime::component::Resource::<mvp_api::Commands>::new_own(
-            commands_table.len() as u32,
-        );
-        commands_table.insert(handle.rep(), ImplCommands {});
+fn startup_mods_system(mut commands: Commands, mut mods: ResMut<StartupMods>) {
+    let mods = &mut *mods;
 
-        let Ok(message) = startup_mod
-            .bindings
-            .jeffparsons_mvp_game_startup_mod_api()
-            .call_run(&mut startup_mod.store, handle)
-        else {
-            eprintln!("ERROR calling startup mod");
-            continue;
-        };
-        println!("Message from startup mod: {message}");
-    }
+    mods.smuggler.share(&mut commands, || {
+        for startup_mod in &mut mods.startup_mods {
+            // TODO: Don't create a new one each time.
+            // In fact, we can probably just reuse _one_ for all calls,
+            // and so we don't even really need to store it in a "table".
+            let commands_table = &mut startup_mod.store.data_mut().commands_table;
+            let handle = wasmtime::component::Resource::<mvp_api::Commands>::new_own(
+                commands_table.len() as u32,
+            );
+            commands_table.insert(handle.rep(), ImplCommands {});
+
+            let Ok(message) = startup_mod
+                .bindings
+                .jeffparsons_mvp_game_startup_mod_api()
+                .call_run(&mut startup_mod.store, handle)
+            else {
+                eprintln!("ERROR calling startup mod");
+                continue;
+            };
+            println!("Message from startup mod: {message}");
+        }
+    });
 }
 
 // TODO: What to call these? Not "mods". And I don't like "handlers".
 #[derive(Resource)]
 struct StartupMods {
     startup_mods: Vec<StartupMod>,
+    smuggler: Arc<SmugglersMutex>,
 }
 
 struct StartupMod {
