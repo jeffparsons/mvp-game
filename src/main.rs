@@ -1,4 +1,4 @@
-mod smugglers_mutex;
+mod ref_mutex;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -8,7 +8,7 @@ use bevy::{
     ecs::system::{Commands, ResMut, Resource},
     DefaultPlugins, MinimalPlugins,
 };
-use smugglers_mutex::SmugglersMutex;
+use ref_mutex::RefMutMutex;
 use startup_mod::jeffparsons::mvp_game::mvp_api::{self, Host, HostCommands};
 use wasmtime_wasi::preview2::{Table, WasiCtx, WasiCtxBuilder, WasiView};
 
@@ -20,7 +20,7 @@ struct StartupModState {
     wasi_ctx: WasiCtx,
     table: Table,
     commands_table: HashMap<u32, ImplCommands>,
-    smuggler: Arc<SmugglersMutex>,
+    commands_mutex: Arc<RefMutMutex>,
 }
 
 struct ImplCommands {}
@@ -32,7 +32,7 @@ impl HostCommands for StartupModState {
         &mut self,
         _self_: wasmtime::component::Resource<mvp_api::Commands>,
     ) -> wasmtime::Result<()> {
-        let mut commands = self.smuggler.lock();
+        let mut commands = self.commands_mutex.lock();
         let commands = commands.as_mut().unwrap();
 
         println!("I'm going to spawn stuff...!");
@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
     startup_mod::StartupMod::add_to_linker(&mut linker, |state| state)
         .context("Failed to set up startup mod world in component linker")?;
 
-    let smuggler = Arc::new(SmugglersMutex::new());
+    let commands_mutex = Arc::new(RefMutMutex::new());
 
     let mut store = wasmtime::Store::new(
         &engine,
@@ -97,7 +97,7 @@ fn main() -> anyhow::Result<()> {
             wasi_ctx: WasiCtxBuilder::new().build(),
             table: Table::new(),
             commands_table: HashMap::new(),
-            smuggler: smuggler.clone(),
+            commands_mutex: commands_mutex.clone(),
         },
     );
     let (bindings, _) = startup_mod::StartupMod::instantiate(&mut store, &component, &linker)?;
@@ -106,7 +106,7 @@ fn main() -> anyhow::Result<()> {
 
     app.insert_resource(StartupMods {
         startup_mods: vec![StartupMod { bindings, store }],
-        smuggler,
+        commands_mutex,
     });
 
     // TODO: Not sure if I want to support an env var for this.
@@ -130,7 +130,7 @@ fn main() -> anyhow::Result<()> {
 fn startup_mods_system(mut commands: Commands, mut mods: ResMut<StartupMods>) {
     let mods = &mut *mods;
 
-    mods.smuggler.share(&mut commands, || {
+    mods.commands_mutex.share(&mut commands, || {
         for startup_mod in &mut mods.startup_mods {
             // TODO: Don't create a new one each time.
             // In fact, we can probably just reuse _one_ for all calls,
@@ -158,7 +158,7 @@ fn startup_mods_system(mut commands: Commands, mut mods: ResMut<StartupMods>) {
 #[derive(Resource)]
 struct StartupMods {
     startup_mods: Vec<StartupMod>,
-    smuggler: Arc<SmugglersMutex>,
+    commands_mutex: Arc<RefMutMutex>,
 }
 
 struct StartupMod {

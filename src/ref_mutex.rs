@@ -5,19 +5,19 @@ use std::{
 
 use bevy::ecs::system::Commands;
 
-pub struct SmugglersMutex {
+pub struct RefMutMutex {
     inner: Mutex<Option<&'static mut Commands<'static, 'static>>>,
 }
 
-impl SmugglersMutex {
+impl RefMutMutex {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(None),
         }
     }
 
-    pub fn lock(&self) -> SmugglersMutexGuard {
-        SmugglersMutexGuard {
+    pub fn lock(&self) -> RefMutMutexGuard {
+        RefMutMutexGuard {
             inner: self.inner.lock().unwrap(),
         }
     }
@@ -38,19 +38,11 @@ impl SmugglersMutex {
     }
 }
 
-pub struct SmugglersMutexGuard<'a> {
+pub struct RefMutMutexGuard<'a> {
     inner: MutexGuard<'a, Option<&'static mut Commands<'static, 'static>>>,
 }
 
-// impl<'mutex> SmugglersMutexGuard<'mutex> {
-//     unsafe fn new(lock: &'mutex SmugglersMutex) -> SmugglersMutexGuard<'mutex> {
-//         Self {
-//             inner: lock.inner.lock().unwrap(),
-//         }
-//     }
-// }
-
-impl<'a> Deref for SmugglersMutexGuard<'a> {
+impl<'a> Deref for RefMutMutexGuard<'a> {
     type Target = Option<&'a mut Commands<'a, 'a>>;
 
     fn deref(&self) -> &Self::Target {
@@ -59,7 +51,7 @@ impl<'a> Deref for SmugglersMutexGuard<'a> {
     }
 }
 
-impl<'a> DerefMut for SmugglersMutexGuard<'a> {
+impl<'a> DerefMut for RefMutMutexGuard<'a> {
     fn deref_mut(&mut self) -> &mut Option<&'a mut Commands<'a, 'a>> {
         let long_life: &mut Option<&mut Commands<'_, '_>> = &mut *self.inner;
         unsafe { std::mem::transmute(long_life) }
